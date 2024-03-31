@@ -95,22 +95,27 @@ class opts:
         )
         self.parser.add_argument(
             '--root_dataset',
+            type='str',
             default='/data/dyh/data/MOTChallenge'
         )
         self.parser.add_argument(
             '--path_AFLink',
+            type='str',
             default='/data/dyh/results/StrongSORT_Git/AFLink_epoch20.pth'
         )
         self.parser.add_argument(
             '--dir_save',
+            type='str',
             default='/data/dyh/results/StrongSORT_Git/tmp'
         )
         self.parser.add_argument(
             '--EMA_alpha',
+            type=float,
             default=0.9
         )
         self.parser.add_argument(
             '--MC_lambda',
+            type=float,
             default=0.98
         )
 
