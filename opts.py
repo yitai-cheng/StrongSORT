@@ -95,17 +95,17 @@ class opts:
         )
         self.parser.add_argument(
             '--root_dataset',
-            type='str',
+            type=str,
             default='/data/dyh/data/MOTChallenge'
         )
         self.parser.add_argument(
             '--path_AFLink',
-            type='str',
+            type=str,
             default='/data/dyh/results/StrongSORT_Git/AFLink_epoch20.pth'
         )
         self.parser.add_argument(
             '--dir_save',
-            type='str',
+            type=str,
             default='/data/dyh/results/StrongSORT_Git/tmp'
         )
         self.parser.add_argument(
