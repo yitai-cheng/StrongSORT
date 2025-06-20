@@ -4,14 +4,17 @@ import numpy as np
 # from sklearn.utils.linear_assignment_ import linear_assignment
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from . import kalman_filter
-from opts import opt
+# from opts import opt
 
+woC = True
+MC = True
+MC_lambda = 0.98
 INFTY_COST = 1e+5
 
 
 def min_cost_matching(
         distance_metric, max_distance, tracks, detections, track_indices=None,
-        detection_indices=None):
+        detection_indices=None, classes=None):
     """Solve linear assignment problem.
 
     Parameters
@@ -54,21 +57,22 @@ def min_cost_matching(
         return [], track_indices, detection_indices  # Nothing to match.
 
     cost_matrix = distance_metric(
-        tracks, detections, track_indices, detection_indices)
+        tracks, detections, track_indices, detection_indices, classes)
     cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
 
     cost_matrix_ = cost_matrix.copy()
 
-    indices = linear_assignment(cost_matrix_)
+    # TODO: how does linear assignment work?
+    row_indices, col_indices = linear_assignment(cost_matrix_)
 
     matches, unmatched_tracks, unmatched_detections = [], [], []
     for col, detection_idx in enumerate(detection_indices):
-        if col not in indices[:, 1]:
+        if col not in col_indices:
             unmatched_detections.append(detection_idx)
     for row, track_idx in enumerate(track_indices):
-        if row not in indices[:, 0]:
+        if row not in row_indices:
             unmatched_tracks.append(track_idx)
-    for row, col in indices:
+    for row, col in zip(row_indices, col_indices):
         track_idx = track_indices[row]
         detection_idx = detection_indices[col]
         if cost_matrix[row, col] > max_distance:
@@ -81,7 +85,7 @@ def min_cost_matching(
 
 def matching_cascade(
         distance_metric, max_distance, cascade_depth, tracks, detections,
-        track_indices=None, detection_indices=None):
+        track_indices=None, detection_indices=None, classes=None):
     """Run matching cascade.
 
     Parameters
@@ -125,7 +129,7 @@ def matching_cascade(
 
     unmatched_detections = detection_indices
     matches = []
-    if opt.woC:
+    if woC:
         track_indices_l = [
             k for k in track_indices
             # if tracks[k].time_since_update == 1 + level
@@ -133,7 +137,7 @@ def matching_cascade(
         matches_l, _, unmatched_detections = \
             min_cost_matching(
                 distance_metric, max_distance, tracks, detections,
-                track_indices_l, unmatched_detections)
+                track_indices_l, unmatched_detections, classes)
         matches += matches_l
     else:
         for level in range(cascade_depth):
@@ -150,14 +154,15 @@ def matching_cascade(
             matches_l, _, unmatched_detections = \
                 min_cost_matching(
                     distance_metric, max_distance, tracks, detections,
-                    track_indices_l, unmatched_detections)
+                    track_indices_l, unmatched_detections, classes)
             matches += matches_l
     unmatched_tracks = list(set(track_indices) - set(k for k, _ in matches))
     return matches, unmatched_tracks, unmatched_detections
 
+
 def gate_cost_matrix(
-        cost_matrix, tracks, detections, track_indices, detection_indices,
-        gated_cost=INFTY_COST, only_position=False):
+        cost_matrix, tracks, detections, track_indices, detection_indices, width_of_image,
+        match_across_boundary, gated_cost=INFTY_COST, only_position=False):
     """Invalidate infeasible entries in cost matrix based on the state
     distributions obtained by Kalman filtering.
 
@@ -196,9 +201,10 @@ def gate_cost_matrix(
     measurements = np.asarray([detections[i].to_xyah() for i in detection_indices])
     for row, track_idx in enumerate(track_indices):
         track = tracks[track_idx]
-        gating_distance = track.kf.gating_distance(track.mean, track.covariance, measurements, only_position)
+        gating_distance = track.kf.gating_distance(track.mean, track.covariance, measurements, width_of_image,
+            match_across_boundary, only_position)
         cost_matrix[row, gating_distance > gating_threshold] = gated_cost
-        if opt.MC:
-            cost_matrix[row] = opt.MC_lambda * cost_matrix[row] + (1 - opt.MC_lambda) *  gating_distance
+        if MC:
+            cost_matrix[row] = MC_lambda * cost_matrix[row] + (1 - MC_lambda) * gating_distance
 
     return cost_matrix

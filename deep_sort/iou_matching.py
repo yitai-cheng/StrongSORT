@@ -40,7 +40,7 @@ def iou(bbox, candidates):
 
 
 def iou_cost(tracks, detections, track_indices=None,
-             detection_indices=None):
+             detection_indices=None, classes=None):
     """An intersection over union distance metric.
 
     Parameters
@@ -78,4 +78,33 @@ def iou_cost(tracks, detections, track_indices=None,
         bbox = tracks[track_idx].to_tlwh()
         candidates = np.asarray([detections[i].tlwh for i in detection_indices])
         cost_matrix[row, :] = 1. - iou(bbox, candidates)
+
+    if classes is not None:
+        # in order not to match the detection and the track with different classes (person and other classes), set the corresponding figure large in the cost matrix
+        # row means tracks
+        for row in range(cost_matrix.shape[0]):
+            # col means detections
+            for col in range(cost_matrix.shape[1]):
+                # car, truck and bus are acceptable to be matched
+                if tracks[track_indices[row]]._class in [2, 5, 7] and classes[
+                    detection_indices[col]
+                ] in [
+                    2,
+                    5,
+                    7,
+                ]:
+                    cost_matrix[row, col] = cost_matrix[row, col]
+                # bicycle and motorcycle are acceptable to be matched
+                elif tracks[track_indices[row]]._class in [0, 1, 3] and classes[
+                    detection_indices[col]
+                ] in [
+                    0,
+                    1,
+                    3,
+                ]:
+                    cost_matrix[row, col] = cost_matrix[row, col]
+                elif (
+                    tracks[track_indices[row]]._class != classes[detection_indices[col]]
+                ):
+                    cost_matrix[row, col] = 1e5
     return cost_matrix

@@ -1,7 +1,8 @@
 # vim: expandtab:ts=4:sw=4
 import numpy as np
 import scipy.linalg
-from opts import opt
+# from opts import opt
+NSA = True
 """
 Table for the 0.95 quantile of the chi-square distribution with N degrees of
 freedom (contains values for N=1, ..., 9). Taken from MATLAB/Octave's chi2inv
@@ -145,7 +146,7 @@ class KalmanFilter(object):
             1e-1,
             self._std_weight_position * mean[3]]
 
-        if opt.NSA:
+        if NSA:
             std = [(1 - confidence) * x for x in std]
 
         innovation_cov = np.diag(np.square(std))
@@ -189,8 +190,15 @@ class KalmanFilter(object):
             kalman_gain, projected_cov, kalman_gain.T))
         return new_mean, new_covariance
 
-    def gating_distance(self, mean, covariance, measurements,
-                        only_position=False):
+    def gating_distance(
+        self,
+        mean,
+        covariance,
+        measurements,
+        width_of_image,
+        match_across_boundary,
+        only_position=False,
+    ):
         """Compute gating distance between state distribution and measurements.
 
         A suitable distance threshold can be obtained from `chi2inv95`. If
@@ -219,16 +227,61 @@ class KalmanFilter(object):
             `measurements[i]`.
 
         """
-        mean, covariance = self.project(mean, covariance)
 
+        mean, covariance = self.project(mean, covariance)
         if only_position:
             mean, covariance = mean[:2], covariance[:2, :2]
             measurements = measurements[:, :2]
 
         cholesky_factor = np.linalg.cholesky(covariance)
+
+        # implementation of the support for boundary continuity
+
+        # normal distance (from the predicted track to the detection)
         d = measurements - mean
+
+        measurements1 = measurements
+        measurements2 = measurements
+
+        measurements1 = measurements1 + np.asarray([width_of_image, 0, 0, 0])
+        measurements2 = measurements2 - np.asarray([width_of_image, 0, 0, 0])
+
+        # distance across the boundary (to the left and right virtual duplicate)
+        d1 = measurements1 - mean
+        d2 = measurements2 - mean
+
+        # do not need to know what is doing here, just do the same things as the original code do
         z = scipy.linalg.solve_triangular(
-            cholesky_factor, d.T, lower=True, check_finite=False,
-            overwrite_b=True)
+            cholesky_factor, d.T, lower=True, check_finite=False, overwrite_b=True
+        )
+        z1 = scipy.linalg.solve_triangular(
+            cholesky_factor, d1.T, lower=True, check_finite=False, overwrite_b=True
+        )
+        z2 = scipy.linalg.solve_triangular(
+            cholesky_factor, d2.T, lower=True, check_finite=False, overwrite_b=True
+        )
         squared_maha = np.sum(z * z, axis=0)
-        return squared_maha
+        squared_maha1 = np.sum(z1 * z1, axis=0)
+        squared_maha2 = np.sum(z2 * z2, axis=0)
+
+        # if to match across the boundary, return the min value of the three squared_maha distance
+        if match_across_boundary == True:
+            min_squared_maha = []
+            for i in range(len(squared_maha)):
+                if (
+                    squared_maha[i] < squared_maha1[i]
+                    and squared_maha[i] < squared_maha2[i]
+                ):
+                    min_squared_maha.append(squared_maha[i])
+                elif (
+                    squared_maha1[i] < squared_maha[i]
+                    and squared_maha1[i] < squared_maha2[i]
+                ):
+                    min_squared_maha.append(squared_maha1[i])
+                else:
+                    min_squared_maha.append(squared_maha2[i])
+            min_squared_maha = np.array(min_squared_maha)
+            return min_squared_maha
+
+        else:
+            return squared_maha

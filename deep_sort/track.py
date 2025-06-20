@@ -1,7 +1,10 @@
 # vim: expandtab:ts=4:sw=4
 import numpy as np
-from deep_sort.kalman_filter import KalmanFilter
-from opts import opt
+from .kalman_filter import KalmanFilter
+# from opts import opt
+EMA_alpha = 0.9
+EMA = True
+
 
 class TrackState:
     """
@@ -65,7 +68,7 @@ class Track:
 
     """
 
-    def __init__(self, detection, track_id, n_init, max_age,
+    def __init__(self, detection, track_id, n_init, max_age, _class, _score,
                  feature=None, score=None):
         self.track_id = track_id
         self.hits = 1
@@ -88,7 +91,9 @@ class Track:
         self.kf = KalmanFilter()
 
         self.mean, self.covariance = self.kf.initiate(detection)
-
+        # added by me
+        self._class = _class
+        self._score = _score
 
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
@@ -137,19 +142,19 @@ class Track:
         else:
             return eye
 
-    def camera_update(self, video, frame):
-        dict_frame_matrix = opt.ecc[video]
-        frame = str(int(frame))
-        if frame in dict_frame_matrix:
-            matrix = self.get_matrix(dict_frame_matrix, frame)
-            x1, y1, x2, y2 = self.to_tlbr()
-            x1_, y1_, _ = matrix @ np.array([x1, y1, 1]).T
-            x2_, y2_, _ = matrix @ np.array([x2, y2, 1]).T
-            w, h = x2_ - x1_, y2_ - y1_
-            cx, cy = x1_ + w / 2, y1_ + h / 2
-            self.mean[:4] = [cx, cy, w / h, h]
+    # def camera_update(self, video, frame):
+    #     dict_frame_matrix = opt.ecc[video]
+    #     frame = str(int(frame))
+    #     if frame in dict_frame_matrix:
+    #         matrix = self.get_matrix(dict_frame_matrix, frame)
+    #         x1, y1, x2, y2 = self.to_tlbr()
+    #         x1_, y1_, _ = matrix @ np.array([x1, y1, 1]).T
+    #         x2_, y2_, _ = matrix @ np.array([x2, y2, 1]).T
+    #         w, h = x2_ - x1_, y2_ - y1_
+    #         cx, cy = x1_ + w / 2, y1_ + h / 2
+    #         self.mean[:4] = [cx, cy, w / h, h]
 
-    def update(self, detection):
+    def update(self, detection, width_of_image, match_across_boundary):
         """Perform Kalman filter measurement update step and update the feature
         cache.
 
@@ -159,11 +164,19 @@ class Track:
             The associated detection.
 
         """
+        if match_across_boundary:
+            # if the matched track and the detection are across the boundary
+            if self.to_tlwh()[0] - detection.tlwh[0] < -(width_of_image / 5):
+                self.mean[0] += width_of_image
+            elif self.to_tlwh()[0] - detection.tlwh[0] > (width_of_image / 5):
+                self.mean[0] -= width_of_image
+
         self.mean, self.covariance = self.kf.update(self.mean, self.covariance, detection.to_xyah(), detection.confidence)
 
+        # TODO: find out why this normalisation is needed
         feature = detection.feature / np.linalg.norm(detection.feature)
-        if opt.EMA:
-            smooth_feat = opt.EMA_alpha * self.features[-1] + (1 - opt.EMA_alpha) * feature
+        if EMA:
+            smooth_feat = EMA_alpha * self.features[-1] + (1 - EMA_alpha) * feature
             smooth_feat /= np.linalg.norm(smooth_feat)
             self.features = [smooth_feat]
         else:
