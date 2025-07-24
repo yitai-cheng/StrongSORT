@@ -58,6 +58,8 @@ def min_cost_matching(
 
     cost_matrix = distance_metric(
         tracks, detections, track_indices, detection_indices, classes)
+
+    # TODO: this line might be redundant? Ans: no, it “blacklists” all costs above the gate by bumping them just past the threshold.
     cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
 
     cost_matrix_ = cost_matrix.copy()
@@ -159,7 +161,7 @@ def matching_cascade(
     unmatched_tracks = list(set(track_indices) - set(k for k, _ in matches))
     return matches, unmatched_tracks, unmatched_detections
 
-
+# TODO: add distance penalisation
 def gate_cost_matrix(
         cost_matrix, tracks, detections, track_indices, detection_indices, width_of_image,
         match_across_boundary, gated_cost=INFTY_COST, only_position=False):
@@ -199,6 +201,9 @@ def gate_cost_matrix(
     assert not only_position
     gating_threshold = kalman_filter.chi2inv95[4]
     measurements = np.asarray([detections[i].to_xyah() for i in detection_indices])
+    large_obj_threshold = 384**2
+    det_sizes = [detections[i].tlwh[2] * detections[i].tlwh[3] for i in detection_indices]
+    det_size_coeffs = [0.05 if det_size > large_obj_threshold else 1 for det_size in det_sizes]
     for row, track_idx in enumerate(track_indices):
         track = tracks[track_idx]
         gating_distance = track.kf.gating_distance(track.mean, track.covariance, measurements, width_of_image,
@@ -206,5 +211,5 @@ def gate_cost_matrix(
         cost_matrix[row, gating_distance > gating_threshold] = gated_cost
         if MC:
             cost_matrix[row] = MC_lambda * cost_matrix[row] + (1 - MC_lambda) * gating_distance
-
+        cost_matrix[row] = cost_matrix[row] * det_size_coeffs
     return cost_matrix

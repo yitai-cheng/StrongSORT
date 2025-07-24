@@ -20,8 +20,8 @@ class StrongSort(object):
         min_confidence=0.3,
         nms_max_overlap=1.0,
         max_iou_distance=0.7,
-        max_age=50,
-        n_init=3,
+        max_age=30,
+        n_init=5,
         nn_budget=100,
         use_cuda=True,
     ):
