@@ -211,5 +211,7 @@ def gate_cost_matrix(
         cost_matrix[row, gating_distance > gating_threshold] = gated_cost
         if MC:
             cost_matrix[row] = MC_lambda * cost_matrix[row] + (1 - MC_lambda) * gating_distance
+        # To lower the cost for large objects. reduce the likelihood of id switches of large objects due to distorsion which can increase the appearance
+        # cost and gating distance.
         cost_matrix[row] = cost_matrix[row] * det_size_coeffs
     return cost_matrix
